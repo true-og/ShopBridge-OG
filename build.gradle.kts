@@ -1,3 +1,5 @@
+import java.io.BufferedReader
+
 plugins {
     id("com.gradleup.shadow") version "8.3.5" // Import shadow API.
     java // Tell gradle this is a java project.
@@ -5,13 +7,20 @@ plugins {
     kotlin("jvm") version "2.1.21" // Import kotlin jvm plugin for kotlin/java integration.
 }
 
-java {
-    // Declare java version.
-    sourceCompatibility = JavaVersion.VERSION_17
-}
+val commitHash = Runtime
+    .getRuntime()
+    .exec(arrayOf("git", "rev-parse", "--short=10", "HEAD"))
+    .let { process ->
+        process.waitFor()
+        val output = process.inputStream.use {
+            it.bufferedReader().use(BufferedReader::readText)
+        }
+        process.destroy()
+        output.trim()
+    }
 
 group = "nl.skbotnl.shopbridge-og" // Declare bundle identifier.
-version = "1.1.5" // Declare plugin version (will be in .jar).
+version = "1.1.6" // Declare plugin version (will be in .jar).
 val apiVersion = "1.19" // Declare minecraft server target version.
 
 tasks.named<ProcessResources>("processResources") {
@@ -53,17 +62,9 @@ dependencies {
     implementation("com.ghostchu.quickshop.compatibility:common:5.2.0.7")
 }
 
-tasks.withType<AbstractArchiveTask>().configureEach { // Ensure reproducible builds.
-    isPreserveFileTimestamps = false
-    isReproducibleFileOrder = true
-}
-
-tasks.shadowJar {
-    archiveClassifier.set("") // Use empty string instead of null
-    from("LICENSE") {
-        into("/")
-    }
-    minimize()
+val targetJavaVersion = 17
+kotlin {
+    jvmToolchain(targetJavaVersion)
 }
 
 tasks.build {
@@ -74,20 +75,35 @@ tasks.jar {
     archiveClassifier.set("part")
 }
 
-tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.add("-parameters")
-    options.compilerArgs.add("-Xlint:deprecation") // Triggers deprecation warning messages.
-    options.encoding = "UTF-8"
-    options.isFork = true
+tasks.shadowJar {
+    archiveClassifier.set("")
+    minimize()
 }
 
-kotlin {
-    jvmToolchain(17)
+tasks.processResources {
+    val props = mapOf(
+        "version" to version,
+        "apiVersion" to apiVersion
+    )
+    inputs.properties(props)
+    filteringCharset = "UTF-8"
+    filesMatching("plugin.yml") {
+        expand(props)
+    }
+
+    from("LICENSE") {
+        into("/")
+    }
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion)
         vendor = JvmVendorSpec.GRAAL_VM
     }
 }

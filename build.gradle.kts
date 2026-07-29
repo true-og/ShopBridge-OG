@@ -57,8 +57,6 @@ repositories {
 /* ---------------------- Java project deps ---------------------------- */
 dependencies {
     compileOnly("org.purpurmc.purpur:purpur-api:1.19.4-R0.1-SNAPSHOT") // Declare Purpur API version to be packaged.
-    compileOnly("com.ghostchu:quickshop-api:5.2.0.7") // Import QuickShop-Hikari Core API.
-    implementation("com.ghostchu.quickshop.compatibility:common:5.2.0.7") // Import QuickShop-Hikari Kotlin Helper API.
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.8") // Import WorldGuard API.
     compileOnly(files("libs/AreaShop-2.9.1.jar")) // Import AreaShop-OG compatible upstream API.
 }

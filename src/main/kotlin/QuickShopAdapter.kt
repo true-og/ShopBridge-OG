@@ -1,5 +1,6 @@
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
+import java.util.UUID
 import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.plugin.Plugin
@@ -8,6 +9,18 @@ internal class QuickShopAdapter private constructor(private val shopManager: Any
     private val getShopsMethod =
         shopManager.javaClass.methods.findMethod("getShops", Chunk::class.java)
             ?: throw IllegalStateException("QuickShop-OG does not expose ShopManager#getShops(Chunk).")
+
+    // Chunk coordinate lookup, preferred because it never forces a chunk to load.
+    private val getShopsByCoordinateMethod =
+        shopManager.javaClass.methods.findMethod(
+            "getShops",
+            String::class.java,
+            Int::class.javaPrimitiveType!!,
+            Int::class.javaPrimitiveType!!,
+        )
+
+    private val transferShopsOwnershipMethod =
+        shopManager.javaClass.methods.findMethod("transferShopsOwnership", Collection::class.java, UUID::class.java)
 
     private val managerDeleteShopMethod =
         shopManager.javaClass.methods.firstOrNull { method ->
@@ -21,6 +34,26 @@ internal class QuickShopAdapter private constructor(private val shopManager: Any
     fun getShops(chunk: Chunk): Map<Location, Any> {
         val shops = getShopsMethod.call(shopManager, chunk) as? Map<*, *> ?: return emptyMap()
 
+        return toShopMap(shops)
+    }
+
+    // Returns null when this QuickShop build has no coordinate based lookup.
+    fun getShops(world: String, chunkX: Int, chunkZ: Int): Map<Location, Any>? {
+        val method = getShopsByCoordinateMethod ?: return null
+        val shops = method.call(shopManager, world, chunkX, chunkZ) as? Map<*, *> ?: return emptyMap()
+
+        return toShopMap(shops)
+    }
+
+    // True when the shops were handed to QuickShop, false when unsupported.
+    fun transferShopsOwnership(shops: Collection<Any>, newOwner: UUID): Boolean {
+        val method = transferShopsOwnershipMethod ?: return false
+        method.call(shopManager, shops, newOwner)
+
+        return true
+    }
+
+    private fun toShopMap(shops: Map<*, *>): Map<Location, Any> {
         return shops.entries.associate { entry ->
             val location =
                 entry.key as? Location

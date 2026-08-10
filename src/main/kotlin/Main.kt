@@ -1,10 +1,11 @@
+import java.util.UUID
 import java.util.logging.Level
 import me.wiefferink.areashop.events.notify.DeletedRegionEvent
 import me.wiefferink.areashop.events.notify.ResoldRegionEvent
 import me.wiefferink.areashop.events.notify.SoldRegionEvent
+import me.wiefferink.areashop.events.notify.TransferredRegionEvent
 import me.wiefferink.areashop.events.notify.UnrentedRegionEvent
 import me.wiefferink.areashop.regions.GeneralRegion
-import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -57,35 +58,39 @@ class Main : JavaPlugin(), Listener {
         removeShopsIn(event.region, wipeStock = false)
     }
 
+    // A player handed the plot to another player, so the shops follow the plot.
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onRegionTransferred(event: TransferredRegionEvent) {
+        transferShopsIn(event.region, event.toPlayer ?: return)
+    }
+
+    private fun transferShopsIn(region: GeneralRegion, newOwner: UUID) {
+        val shops = collectShopsIn(region)
+        if (shops.isEmpty()) {
+            return
+        }
+
+        val handled =
+            try {
+                quickShop.transferShopsOwnership(shops.values, newOwner)
+            } catch (error: Exception) {
+                logger.warning("Could not transfer shops in region ${region.name}: ${error.message}")
+                return
+            }
+
+        if (!handled) {
+            logger.warning(
+                "${QuickShopAdapter.PLUGIN_NAME} has no ownership transfer API, " +
+                    "${shops.size} shop(s) in region ${region.name} still belong to the previous owner."
+            )
+            return
+        }
+
+        logger.info("Transferred ${shops.size} shop(s) in region ${region.name} to $newOwner.")
+    }
+
     private fun removeShopsIn(region: GeneralRegion, wipeStock: Boolean) {
-        val protectedRegion = region.region ?: return
-        val world = region.world ?: return
-
-        val minPoint = region.minimumPoint
-        val maxPoint = region.maximumPoint
-        val chuckLocations = hashSetOf<Chunk>()
-
-        var x = minPoint.blockX
-        while (x <= maxPoint.blockX + 16) {
-            var z = minPoint.blockZ
-            while (z <= maxPoint.blockZ + 16) {
-                chuckLocations.add(world.getChunkAt(x shr 4, z shr 4))
-                z += 16
-            }
-            x += 16
-        }
-
-        val shopMap = hashMapOf<Location, Any>()
-
-        for (chunk in chuckLocations) {
-            shopMap.putAll(quickShop.getShops(chunk))
-        }
-
-        for ((shopLocation, shop) in shopMap) {
-            if (!protectedRegion.contains(shopLocation.blockX, shopLocation.blockY, shopLocation.blockZ)) {
-                continue
-            }
-
+        for ((shopLocation, shop) in collectShopsIn(region)) {
             // Empty the container first, because the shop's inventory link is no longer resolvable after deletion.
             if (wipeStock) {
                 try {
@@ -98,6 +103,34 @@ class Main : JavaPlugin(), Listener {
             }
 
             quickShop.deleteShop(shop)
+        }
+    }
+
+    // Every shop inside the region's WorldGuard boundary, keyed by its location.
+    private fun collectShopsIn(region: GeneralRegion): Map<Location, Any> {
+        val protectedRegion = region.region ?: return emptyMap()
+        val world = region.world ?: return emptyMap()
+
+        val minPoint = region.minimumPoint
+        val maxPoint = region.maximumPoint
+        val minChunkX = minPoint.blockX shr 4
+        val maxChunkX = maxPoint.blockX shr 4
+        val minChunkZ = minPoint.blockZ shr 4
+        val maxChunkZ = maxPoint.blockZ shr 4
+
+        val shopMap = hashMapOf<Location, Any>()
+        for (chunkX in minChunkX..maxChunkX) {
+            for (chunkZ in minChunkZ..maxChunkZ) {
+                // Prefer the coordinate lookup, the Chunk overload would load the chunk.
+                val shops =
+                    quickShop.getShops(world.name, chunkX, chunkZ)
+                        ?: quickShop.getShops(world.getChunkAt(chunkX, chunkZ))
+                shopMap.putAll(shops)
+            }
+        }
+
+        return shopMap.filterKeys { location ->
+            protectedRegion.contains(location.blockX, location.blockY, location.blockZ)
         }
     }
 }

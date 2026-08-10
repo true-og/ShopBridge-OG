@@ -1,0 +1,4 @@
+[submodule "libs/AreaShop-OG"]
+	path = libs/AreaShop-OG
+	url = https://github.com/true-og/AreaShop-OG
+	branch = dev/bleeding

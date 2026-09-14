@@ -52,10 +52,10 @@ class Main : JavaPlugin(), Listener {
         removeShopsIn(event.region, wipeStock = true)
     }
 
-    // Ownership moves straight from one player to another, so the stock stays behind for the buyer.
+    // Ownership moves straight from one player to another, so the shops and their stock follow the plot.
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onRegionResold(event: ResoldRegionEvent) {
-        removeShopsIn(event.region, wipeStock = false)
+        transferShopsIn(event.region, event.region.owner ?: return)
     }
 
     // A player handed the plot to another player, so the shops follow the plot.
